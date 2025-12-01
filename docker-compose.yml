@@ -1,0 +1,52 @@
+services:
+  # TimescaleDB database
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: tsdb-benchmark-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: homework
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+      - ./data/cpu_usage.csv:/data/cpu_usage.csv:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d homework"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - benchmark-net
+
+  # Benchmark application
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tsdb-benchmark-app
+    environment:
+      PGHOST: timescaledb
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: password
+      PGDATABASE: homework
+      PGSSLMODE: disable
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - benchmark-net
+    # Default command - can be overridden
+    command: ["--file", "/data/query_params.csv", "--workers", "10"]
+
+volumes:
+  timescale-data:
+
+networks:
+  benchmark-net:
+    driver: bridge
